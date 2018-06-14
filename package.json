@@ -1,0 +1,10 @@
+{
+  "name": "ribcage_mqtt",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "backbone4000": "git://github.com/leshy/backbone4000.git",
+    "mqtt": "^2.18.1"
+  }
+}
