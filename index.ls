@@ -38,7 +38,8 @@ exports.lego = backbone.Model.extend4000 do
       @client.publish 'who', who
       setTimeout((~> @client.unsubscribe who, -> resolve clients), 500)
 
-  subscribe: -> @client.subscribe
-  publish: -> @client.publish
-  unsubscribe: -> @client.unsubscribe
+  subscribe: (...args) -> @client.subscribe.apply(@client, args)
+  publish: (...args) -> @client.publish.apply(@client, args)
+  unsubscribe: (...args) -> @client.unsubscribe.apply(@client, args)
+  
   end: -> @client.end()
