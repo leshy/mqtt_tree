@@ -5,6 +5,7 @@
   "license": "MIT",
   "dependencies": {
     "backbone4000": "git://github.com/leshy/backbone4000.git",
+    "bluebird": "^3.5.1",
     "mqtt": "^2.18.1"
   }
 }
