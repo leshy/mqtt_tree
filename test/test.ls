@@ -1,64 +1,76 @@
 require! {
   path
   assert
-  '../index.ls': { RootNode, Node }
+  lodash: { map, omit }
+  '../index.ls': { RootNode, CallNode }
 }
 
 describe 'abstract', ->
-
   specify 'node publish', ->
-
-      
-    location = new Node('root')
-
-    location.on 'change', (child, p) ->
-      console.log 'location change', child, p, child.changedAttributes()
+    location = new CallNode('room')
     
     publist = [  ]
 
+    location.on 'change', (child, data, pth) ->
+      change = child.changedAttributes()
+      if not change.lu then change.lu = Date.now()
+#      console.log 'PUB', pth, change
+      publist.push [ pth, change ]
+            
+
     device = location.child('device1')
-    temperature = device.child('temperature')
-    motion = device.child('motion')
-
-    # # direct publish
-    # device.publish 'battery', 100
-    # motion.publish 'morecomplex', bla: 23
-
-    # assert.deepEqual do
-    #   [ [ 'device1/battery', 100 ], [ 'device1/motion/morecomplex', { bla: 23 } ] ],
-    #   publist
-
-    publist = [  ]
+    temperature = device.child 'temperature'
+    motion = device.child 'motion' 
 
     # smart publish    
     temperature.val 21
     motion.set { bla: 3, kaka: { deep: 'data', temp: 33 } }
 
+    assert.deepEqual do
+      (map publist, ([path, val]) -> [path, omit(val, 'lu')]),
+      [ [ 'room/device1/temperature', { val: 21 } ],
+        [ 'room/device1/motion', { bla: 3, kaka: { deep: 'data', temp: 33 } } ] ]
 
-    temperature.test = (...args) ->
-      console.log 'called with', args
-    location.call('device1/temperature/test', 3, 1)
+  describe 'rpc', ->
+    room = new CallNode('room')
 
+    device1 = room.child 'device1'
 
-  specify 'node reply', ->
-    
-    true
+    specify 'expose', -> 
 
-    # assert.deepEqual do
-    #   [ [ 'device1/temperature/val', 21 ],
-    #     [ 'device1/motion/bla', 3 ],
-    #     [ 'device1/motion/kaka', { deep: 'data', temp: 33 } ] ],
-    #   publist
+      calls = [  ]
+      temperature = device1.child 'temperature', do
+        expose:
+          turnoff: (...args) ->
+            calls.push ['turnoff', args]
+          lala: true
+          
+        lala: (...args) ->
+          calls.push ['lala', args]
 
+      room.call('device1/temperature/lala', 'whitelist', 1, 2)
+      room.call('device1/temperature/turnoff', 'inline', 'bla')
+      
+      assert.deepEqual do
+        [ [ 'lala', [ 'whitelist', 1, 2 ] ],[ 'turnoff', [ 'inline', 'bla' ] ] ]
+        calls  
 
-  # specify 'rootPublish', ->
-  #   root = new RootNode('root')
-  #   root.pub 
-  #   console.log root.publish {
-  #     someval: 11
-  #     device: {
-  #       batteru: 83
-  #       temperature: { lu: 'lala', val: 21 }
-  #       motion: { lu: 'never', val: false }
-  #     }
-  #   }
+      
+    specify 'remote', -> 
+
+      motion = device1.child 'motion', do
+        remote: { +turnoff }
+        
+      calls = [  ]
+      room.on 'call', (child, data, pth) ->
+        calls.push [ pth, data ]
+        assert.equal child, motion
+
+      motion.turnoff(true, 2)
+      
+      assert.deepEqual do
+        [ [ 'room/device1/turnoff', [ true, 2 ] ] ]
+        calls
+
+      
+      

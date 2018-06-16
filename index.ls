@@ -1,7 +1,7 @@
 require! {
   mqtt, os, path
   bluebird: p
-  lodash: { each, reduce, head, tail }
+  lodash: { each, reduce, head, tail, mapValues }
   'backbone4000': Backbone
   abstractman: { GraphNode }
 }
@@ -14,34 +14,44 @@ export Node = GraphNode.extend4000 do
   idAttribute: "name"
   
   inspect: -> "Node(#{@name})"
-    
-  initialize: (@name, @parent) ->
-    @children.on 'change', (child, p) ~>
-      if p@@ is Object then p = child.name
-      @trigger 'change', child, path.join(@name, p)
+
+  initialize: (@name, @parent, @options={}) ->
+    @children.on 'all', (event, child, data, pth) ~>
+      if not pth or pth@@ is Object then pth = child.name
+      @trigger event, child, data, path.join(@name, pth)
   
   val: (val) ->
     if val then @set val: val
     else @get 'val'
     
-  child: (name) ->
+  child: (name, extend) ->
     Cls = @childClass or @constructor
+    if extend then Cls = Cls.extend4000 extend
     child = new Cls name, @
     @addChild(child)
+    
+        
 
+export CallNode = Node.extend4000 do
+
+  initialize: ->
+    if @remote then @remote = each @remote, (value, name) ~>
+      @[ name ] = (...args) ~>
+        @trigger 'call', @, args, name
+      
   call: (pth, ...value) ->
     if pth@@ is String then pth = pth.split('/')
 
     [ target, ...pth ] = pth
     
     if (not pth.length)
-      targetFunction = @[target]
-      if not targetFunction then return console.log "warning, no function named #{ target } at #{ @ }"
-      targetFunction(...value)
+      targetFunction = @expose?[target]
+      if not targetFunction then return console.log "warning, no function named '#{ target }' at #{ @inspect() }"
+      if targetFunction is true then targetFunction = @[ target ]
+      targetFunction.apply @, value
     else
       targetChild = head @getChild(target)
       if not targetChild then return console.log 'warning, child with name', target, 'not found'
-      console.log 'targetChild', targetChild
       targetChild.call(pth, ...value)
       
 
