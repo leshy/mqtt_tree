@@ -3,6 +3,7 @@ require! {
   assert
   lodash: { map, omit }
   '../index.ls': { RootNode, CallNode }
+  bluebird: p
 }
 
 describe 'abstract', ->
@@ -16,7 +17,6 @@ describe 'abstract', ->
       if not change.lu then change.lu = Date.now()
 #      console.log 'PUB', pth, change
       publist.push [ pth, change ]
-            
 
     device = location.child('device1')
     temperature = device.child 'temperature'
@@ -33,7 +33,6 @@ describe 'abstract', ->
 
   describe 'rpc', ->
     room = new CallNode('room')
-
     device1 = room.child 'device1'
 
     specify 'expose', -> 
@@ -41,11 +40,15 @@ describe 'abstract', ->
       calls = [  ]
       temperature = device1.child 'temperature', do
         expose:
-          turnoff: (...args) ->
-            calls.push ['turnoff', args]
+          # method whitelist
           lala: true
+          # inline call
+          turnoff: (...args) ->
+            assert.equal temperature, @ # make sure this is preserved
+            calls.push ['turnoff', args]
           
         lala: (...args) ->
+          assert.equal temperature, @
           calls.push ['lala', args]
 
       room.call('device1/temperature/lala', 'whitelist', 1, 2)
@@ -55,13 +58,12 @@ describe 'abstract', ->
         [ [ 'lala', [ 'whitelist', 1, 2 ] ],[ 'turnoff', [ 'inline', 'bla' ] ] ]
         calls  
 
-      
     specify 'remote', -> 
-
       motion = device1.child 'motion', do
         remote: { +turnoff }
         
       calls = [  ]
+      
       room.on 'call', (child, data, pth) ->
         calls.push [ pth, data ]
         assert.equal child, motion
@@ -74,3 +76,29 @@ describe 'abstract', ->
 
       
       
+
+  describe 'real world mqtt', ->
+    mosca = require('mosca');
+    
+    before -> new p (resolve,reject) ~> 
+      require('get-port')().then (@port) ~>  
+        @broker = new mosca.Server port: @port
+
+        @broker.on 'clientConnected',(client) -> 
+            console.log('client connected', client.id);
+
+        #fired when a message is received
+        @broker.on 'published',(packet, client) -> 
+          console.log('Published', packet.payload);
+
+        @broker.on 'ready', resolve
+          
+    specify 'broker running', ->
+      assert @broker
+      console.log 'port', @port
+
+    specify 'real world connection', ->
+      true
+        
+
+    

@@ -56,14 +56,21 @@ export CallNode = Node.extend4000 do
       
 
 export MqttNode = Node.extend4000 do
-  pub: (name, value) ->
-    true
-    
-  sub: (name, callback) ->
-    true
 
-  initRoot: -> true
-  
+  initialize: ->
+    @on 'change', (child, data, pth) ~> 
+      change = child.changedAttributes()
+      if not change.lu then change.lu = Date.now()
+      @mqtt.publish pth, data, retain: true
+
+    @on 'call', (child, data, pth) ~>
+      @mqtt.publish path.join('call', pth), data
+
+    @mqtt.subscribe path.join('call', @name, '#')
+    @mqtt.on 'message', (pth, message) ~>
+      console.log 'call in', pth, message
+      
+
 
 
 export lego = Node.extend4000 do
