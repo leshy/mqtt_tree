@@ -1,25 +1,85 @@
-backbone = require 'backbone4000'
-require! { mqtt, os, path, bluebird: p }
+require! {
+  mqtt, os, path
+  bluebird: p
+  lodash: { each, reduce }
+  'backbone4000': Backbone
+}
 
 
-exports.lego = backbone.Model.extend4000 do
+export Node = Backbone.Model.extend4000 do
+  initialize: (@name, @parent) ->
+    @on 'change', ~> 
+      each @changedAttributes(), (value, key) ~>
+        @publish key, value
+
+    if not @parent then @initRoot()
+      
+        
+  path: -> if @parent then path.join(@parent.path(), @name) else @name
+  
+  val: (val) ->
+    if val then @set val: val
+    else @get 'val'
+
+  publish: (name, value) ->
+    if @parent then @parent.publish(path.join(@name, name), value)
+    else @pub path.join(@name, 'status', name), value
+    
+  child: (name) ->
+    Cls = @childClass or @constructor
+    new Cls name, @
+
+  pub: (name, value) ->
+    ...
+
+  sub: (name, value) ->
+    ...
+
+  initRoot: ->
+    ...
+
+
+
+export Device = Node.extend4000 do
+  initialize: (@parent, @name) ->
+    @on 'change', (self, state) ~> 
+      values = @changedAttributes()
+      path = @path()
+
+      each values, (value, name) ~> 
+        @parent.publish path.join(@name, name), value
+
+
+  setState: (state) ->
+    @mqtt.publish do
+      path.join(@mqtt.settings.root, 'status', @name)
+      JSON.stringify({ lu: Date.now()  } <<< state ), { retain: true }
+
+
+export Sensor = Node.extend4000({})
+
+
+export lego = Node.extend4000 do
   requires: [ 'logger' ]
   
   settings: do
     name: os.hostname() + "/" + path.basename(path.dirname(require.main.filename))
     port: 1883
-    
+
   init: (callback) ->
-    @env.mqtt = @
     @settings.name = @settings.name
-    @settings.path = path.join(@settings.root, 'device', @settings.name)
-    @env.log 'connecting to ' + @settings.host, {}, 'offline'
-    @client = mqtt.connect @settings{ host, port } <<<
-      will: { topic: @settings.path + '/status', payload: false }
+    @settings.path = path.join(@settings.name)
+    
+    @logger = @env.l.child({tags: {+mqtt}})
+    @log = @logger.log.bind(@logger)
+    
+    @log 'connecting to mqtt://' + @settings.host + ":" + @settings.port, {}, 'offline'
+    @client = mqtt.connect @settings{ host, port }
+    #<<<
+    #  will: { topic: @settings.path + '/status', payload: JSON.stringify({ status: -1 }) }
       
     @client.on 'connect', ~> 
-      @client.publish @settings.path + '/status', 'online'
-      @client.publish 'connect', @settings.path
+#      @client.publish @settings.path + '/status', JSON.stringify({ status: 1 })
       
       @client.subscribe [ 'who' ]
       
@@ -27,7 +87,7 @@ exports.lego = backbone.Model.extend4000 do
         if topic != 'who' then return
         @client.publish msg, @settings.path
         
-      @env.log 'mqtt connected to ' + @settings.host, {}, 'init','ok'
+      @log 'connected', {  }, 'init', 'ok'
       callback()
 
   who: -> new p (resolve,reject) ~> 
@@ -38,8 +98,16 @@ exports.lego = backbone.Model.extend4000 do
       @client.publish 'who', who
       setTimeout((~> @client.unsubscribe who, -> resolve clients), 500)
 
-  subscribe: (...args) -> @client.subscribe.apply(@client, args)
-  publish: (...args) -> @client.publish.apply(@client, args)
-  unsubscribe: (...args) -> @client.unsubscribe.apply(@client, args)
+  on: (...args) -> @client.on.apply(@client, args)
   
+  subscribe: (...args) -> @client.subscribe.apply(@client, args)
+  
+  publish: (...args) -> @client.publish.apply(@client, args)
+  
+  unsubscribe: (...args) -> @client.unsubscribe.apply(@client, args)
+
+  Device: (name) -> new export Device(@, name)
+  
+  Sensor: (name) -> new export Node(@, path.join('sensors', name))
+    
   end: -> @client.end()
