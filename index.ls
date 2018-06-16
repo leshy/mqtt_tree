@@ -1,62 +1,59 @@
 require! {
   mqtt, os, path
   bluebird: p
-  lodash: { each, reduce }
+  lodash: { each, reduce, head, tail }
   'backbone4000': Backbone
+  abstractman: { GraphNode }
 }
 
 
-export Node = Backbone.Model.extend4000 do
+export Node = GraphNode.extend4000 do
+  plugs:
+    children: { singular: 'child' }
+    
+  idAttribute: "name"
+  
+  inspect: -> "Node(#{@name})"
+    
   initialize: (@name, @parent) ->
-    @on 'change', ~> 
-      each @changedAttributes(), (value, key) ~>
-        @publish key, value
-
-    if not @parent then @initRoot()
-      
-        
-  path: -> if @parent then path.join(@parent.path(), @name) else @name
+    @children.on 'change', (child, p) ~>
+      if p@@ is Object then p = child.name
+      @trigger 'change', child, path.join(@name, p)
   
   val: (val) ->
     if val then @set val: val
     else @get 'val'
-
-  publish: (name, value) ->
-    if @parent then @parent.publish(path.join(@name, name), value)
-    else @pub path.join(@name, 'status', name), value
     
   child: (name) ->
     Cls = @childClass or @constructor
-    new Cls name, @
+    child = new Cls name, @
+    @addChild(child)
 
+  call: (pth, ...value) ->
+    if pth@@ is String then pth = pth.split('/')
+
+    [ target, ...pth ] = pth
+    
+    if (not pth.length)
+      targetFunction = @[target]
+      if not targetFunction then return console.log "warning, no function named #{ target } at #{ @ }"
+      targetFunction(...value)
+    else
+      targetChild = head @getChild(target)
+      if not targetChild then return console.log 'warning, child with name', target, 'not found'
+      console.log 'targetChild', targetChild
+      targetChild.call(pth, ...value)
+      
+
+export MqttNode = Node.extend4000 do
   pub: (name, value) ->
-    ...
+    true
+    
+  sub: (name, callback) ->
+    true
 
-  sub: (name, value) ->
-    ...
-
-  initRoot: ->
-    ...
-
-
-
-export Device = Node.extend4000 do
-  initialize: (@parent, @name) ->
-    @on 'change', (self, state) ~> 
-      values = @changedAttributes()
-      path = @path()
-
-      each values, (value, name) ~> 
-        @parent.publish path.join(@name, name), value
-
-
-  setState: (state) ->
-    @mqtt.publish do
-      path.join(@mqtt.settings.root, 'status', @name)
-      JSON.stringify({ lu: Date.now()  } <<< state ), { retain: true }
-
-
-export Sensor = Node.extend4000({})
+  initRoot: -> true
+  
 
 
 export lego = Node.extend4000 do
