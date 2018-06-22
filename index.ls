@@ -22,105 +22,92 @@ export Node = GraphNode.extend4000 do
           | String => { name: arg }
           | Object => arg
           | _ => { parent: arg }
-          
-    @ <<< @{ name, parent }
-    
+
     @children.on 'all', (event, child, data, pth) ~>
-      if not pth or pth@@ is Object then pth = child.name
-      if @parent then pth = path.join(@name, pth)
+      if not pth or pth@@ is Object then pth = [ child.name ]
+      if @parent then pth = [ @name, ...pth ]
       @trigger event, child, data, pth
   
   val: (val) ->
     if val then @set val: val
     else @get 'val'
     
-  child: (name, extend) ->
-    Cls = @childClass or @constructor
+  child: (name, extend, cls) ->
+    Cls = cls or @childClass or @constructor
     if extend then Cls = Cls.extend4000 extend
     child = new Cls { name: name, parent: @ }
     @addChild(child)
-        
 
-export CallNode = Node.extend4000 do
 
+
+export PubSubNode = Node.extend4000 do
+  subNode: (name, extend) ->
+    @child(name, extend, SubNode)
+    
+  pubNode: (name, extend) ->
+    @child(name, extend, PubNode)
+    
+  command_delegate: (command, pth, value) ->
+    [ target, ...pthtail ] = pth
+    if targetChild = head @getChild(target)
+      targetChild.command_receive(command, pthtail.join('/'), value)
+    else
+      @command_receive(command, pth, value)
+
+export SubNode = PubSubNode.extend4000 do
   initialize: ->
     if @remote then @remote = each @remote, (value, name) ~>
       @[ name ] = (...args) ~>
-        @trigger 'call', @, args, name
-
-
+        @trigger 'call', @, args, [ @name, name ]
+    
   command_receive: (command, pth, value) ->
     switch command
-      | 'call' =>
-        targetFunction = @expose?[target]
-        if not targetFunction then return console.log "warning, no function named '#{ target }' at #{ @inspect() }"
-        if targetFunction is true then targetFunction = @[ target ]
-        targetFunction.apply @, value
-        
       | 'status' =>
-        @set value, silent: true
-    
-  command_delegate: (command, pth, value) ->
-    if pth@@ is String then pth = pth.split('/')
-    [ target, ...pth ] = pth
-    
-    if (not pth.length)
-      @command_receive(command, pth, value)
-    else
-      targetChild = head @getChild(target)
-      if not targetChild then return console.log 'warning, child with name', target, 'not found'
-      targetChild.call_receive(pth, ...value)
-      
-    
-  
-                  
+        @set { "#{pth}":  value }
 
-  call_receive: (pth, ...value) ->
-    if pth@@ is String then pth = pth.split('/')
 
-    [ target, ...pth ] = pth
-    
-    if (not pth.length)
-      targetFunction = @expose?[target]
-      if not targetFunction then return console.log "warning, no function named '#{ target }' at #{ @inspect() }"
-      if targetFunction is true then targetFunction = @[ target ]
-      targetFunction.apply @, value
-    else
-      targetChild = head @getChild(target)
-      if not targetChild then return console.log 'warning, child with name', target, 'not found'
-      targetChild.call_receive(pth, ...value)
+export PubNode = PubSubNode.extend4000 do
+  command_receive: (command, pth, value) ->
+    switch command
+      | 'command' =>
+        targetFunction = @expose?[pth]
+        if not targetFunction then return #console.log "warning, no function named '#{ pth }' at #{ @inspect() }"
+        if targetFunction is true then targetFunction = @[ pth ]
+        targetFunction.apply @, value
 
-export MqttNode = CallNode.extend4000 do
-  childClass: CallNode
+      | 'set' =>
+        if @get(pth) isnt value
+          @set set = { "#{pth}":  value }
+
+
+export MqttNode = PubSubNode.extend4000 do
+  childClass: PubSubNode
   
   initialize: ->
-    @mqtt = mqtt.connect @{ host, port }
+    if not @matt = @options?mqtt
+      @mqtt = mqtt.connect @{ host, port }
 
-    @on 'change', (child, data, pth) ~> 
-      change = child.changedAttributes()
-      lu = Date.now()
-      each change, (val, key) ~> 
-        @publish path.join(@name, 'status', pth, key), JSON.stringify({ lu: lu, val: val }), retain: true
+    @on 'change', (child, data, pth) ~>
+      each child.changedAttributes(), (val, key) ~> 
+        @publish path.join(@name, 'status', ...pth, key), JSON.stringify(val), retain: true
 
     @on 'call', (child, data, pth) ~>
-      console.log "CALL TRANSMIT", pth, data
-#      @publish path.join(@name, 'call', pth), JSON.stringify(data)
+      @publish path.join(@name, 'command', ...pth), JSON.stringify(data)
       
     @subscribe path.join(@name, '#')
     
     @mqtt.on 'message', (pth, message) ~>
       pth = pth.split('/')
-
-      [ self, command, ...tail ] = pth
-      tail = tail.join('/')
-      
-      console.log @name, 'MSG IN', command, tail, JSON.parse(message)
+      [ self, command, ...pthtail ] = pth
+      @command_delegate command, pthtail, JSON.parse(message)
 
   publish: (pth, data) ->
+    if pth@@ isnt String then pth = pth.join('/')
     console.log @name, 'PUB', pth, data
     @mqtt.publish pth, data
     
   subscribe: (pth) ->
+    if pth@@ isnt String then pth = pth.join('/')
     console.log @name, 'SUB', pth
     @mqtt.subscribe pth
     
