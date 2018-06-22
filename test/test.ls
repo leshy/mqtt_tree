@@ -73,7 +73,7 @@ describe 'real world mqtt', ->
       setTimeout resolve, 100
 
     specify 'attribute change update', -> new p (resolve,reject) ~> 
-      @service_root2.on 'change:somevalue', (model, val) ->
+      @service_root2.on 'remotechange:somevalue', (model, val) ->
           resolve assert.equal val, 2
 
       @service_root1.set somevalue: 2
@@ -87,10 +87,15 @@ describe 'real world mqtt', ->
     specify 'api call and change', -> new p (resolve,reject) ~> 
       @service_root2.some_api(lala: 3)
 
-      @service_root2.on 'change:blab', (model, val) ->
+      @service_root2.on 'remotechange:blab', (model, val) ->
         assert.deepEqual val, lala: 3
         resolve()
 
       @service_root1.some_api = (args) ->
         @set blab: args
+
+    specify 'change request', -> new p (resolve,reject) ~> 
+      @service_root2.set(bla: 3)
+      @service_root1.on 'change:bla', (model, val) ->
+        resolve()
 

@@ -59,12 +59,17 @@ export SubNode = PubSubNode.extend4000 do
     if @remote then @remote = each @remote, (value, name) ~>
       @[ name ] = (...args) ~>
         @trigger 'call', @, args, [ @name, name ]
+
+    @on 'change', ~>
+      each @changedAttributes(), (value, key) ~>
+        @trigger 'set', @, value, [ @name, key ]
     
   command_receive: (command, pth, value) ->
     switch command
       | 'status' =>
-        @set { "#{pth}":  value }
-
+        @set set = { "#{pth}":  value }, silent: true
+        @trigger "remotechange:#{pth}", @, value
+        @trigger 'remotechange', @, set
 
 export PubNode = PubSubNode.extend4000 do
   command_receive: (command, pth, value) ->
@@ -76,8 +81,9 @@ export PubNode = PubSubNode.extend4000 do
         targetFunction.apply @, value
 
       | 'set' =>
-        if @get(pth) isnt value
-          @set set = { "#{pth}":  value }
+        @set set = { "#{pth}":  value }
+        @trigger "remotechange:#{pth}", @, value
+        @trigger 'remotechange', @, set
 
 
 export MqttNode = PubSubNode.extend4000 do
@@ -93,6 +99,9 @@ export MqttNode = PubSubNode.extend4000 do
 
     @on 'call', (child, data, pth) ~>
       @publish path.join(@name, 'command', ...pth), JSON.stringify(data)
+
+    @on 'set', (child, data, pth) ~>
+      @publish path.join(@name, 'set', ...pth), JSON.stringify(data)
       
     @subscribe path.join(@name, '#')
     
