@@ -1,8 +1,8 @@
 require! {
   path
   assert
-  lodash: { map, omit }
-  '../index.ls': { RootNode, CallNode }
+  lodash: { map, omit, head }
+  '../index.ls': { RootNode, CallNode, MqttNode }
   bluebird: p
 }
 
@@ -28,8 +28,8 @@ describe 'abstract', ->
 
     assert.deepEqual do
       (map publist, ([path, val]) -> [path, omit(val, 'lu')]),
-      [ [ 'room/device1/temperature', { val: 21 } ],
-        [ 'room/device1/motion', { bla: 3, kaka: { deep: 'data', temp: 33 } } ] ]
+      [ [ 'device1/temperature', { val: 21 } ],
+        [ 'device1/motion', { bla: 3, kaka: { deep: 'data', temp: 33 } } ] ]
 
   describe 'rpc', ->
     room = new CallNode('room')
@@ -51,8 +51,8 @@ describe 'abstract', ->
           assert.equal temperature, @
           calls.push ['lala', args]
 
-      room.call('device1/temperature/lala', 'whitelist', 1, 2)
-      room.call('device1/temperature/turnoff', 'inline', 'bla')
+      room.call_receive('device1/temperature/lala', 'whitelist', 1, 2)
+      room.call_receive('device1/temperature/turnoff', 'inline', 'bla')
       
       assert.deepEqual do
         [ [ 'lala', [ 'whitelist', 1, 2 ] ],[ 'turnoff', [ 'inline', 'bla' ] ] ]
@@ -71,11 +71,9 @@ describe 'abstract', ->
       motion.turnoff(true, 2)
       
       assert.deepEqual do
-        [ [ 'room/device1/turnoff', [ true, 2 ] ] ]
+        [ [ 'device1/turnoff', [ true, 2 ] ] ]
         calls
 
-      
-      
 
   describe 'real world mqtt', ->
     mosca = require('mosca');
@@ -88,8 +86,8 @@ describe 'abstract', ->
             console.log('client connected', client.id);
 
         #fired when a message is received
-        @broker.on 'published',(packet, client) -> 
-          console.log('Published', packet.payload);
+#        @broker.on 'published',(packet, client) -> 
+#          console.log('Published', packet.payload);
 
         @broker.on 'ready', resolve
           
@@ -97,8 +95,35 @@ describe 'abstract', ->
       assert @broker
       console.log 'port', @port
 
-    specify 'real world connection', ->
-      true
-        
+    specify 'real world human connection', -> new p (resolve,reject) ~> 
+      root = new MqttNode(
+        name: 'node1',
+        host: "localhost",
+        port: @port
+      )
 
-    
+      service_root = root.child 'service1', do
+        initialize: ->
+          @set somevalue: 1
+          
+        expose:
+          call1: (...args) ->
+            console.log 'call received', args
+            @set somevalue: head args
+            resolve args
+
+
+      caller = new MqttNode(
+        name: 'node1',
+        host: "localhost",
+        port: @port
+      )
+      
+      service_caller = caller.child 'service1', do
+        remote: { +some_api }
+
+
+      service_root.set somevalue: 2
+      service_caller.some_api('bla',1,2,3)
+
+#       console.log "GOT", service_caller.get('somevalue')

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
+  "scripts": {
+    "test": "mocha"
+  },
   "dependencies": {
     "backbone4000": "git://github.com/leshy/backbone4000.git",
     "bluebird": "^3.5.1",
