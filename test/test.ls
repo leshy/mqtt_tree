@@ -55,7 +55,6 @@ describe 'real world mqtt', ->
         port: @port
       )
 
-
       @root2 = new MqttNode(
         name: 'node0',
         host: "localhost",

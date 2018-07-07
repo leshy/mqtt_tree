@@ -6,7 +6,6 @@ require! {
   abstractman: { GraphNode }
 }
 
-
 export Node = GraphNode.extend4000 do
   plugs:
     children: { singular: 'child' }
@@ -16,12 +15,11 @@ export Node = GraphNode.extend4000 do
   inspect: -> "Node(#{@name})"
 
   initialize: (...args) ->
-
     each args, (arg) ~>
-        @ <<< switch arg?@@
-          | String => { name: arg }
-          | Object => arg
-          | _ => { parent: arg }
+      @ <<< switch arg?@@
+        | String => { name: arg }
+        | Object => arg
+        | _ => { parent: arg }
 
     @children.on 'all', (event, child, data, pth) ~>
       if not pth or pth@@ is Object then pth = [ child.name ]
@@ -37,7 +35,6 @@ export Node = GraphNode.extend4000 do
     if extend then Cls = Cls.extend4000 extend
     child = new Cls { name: name, parent: @ }
     @addChild(child)
-
 
 
 export PubSubNode = Node.extend4000 do
@@ -123,56 +120,3 @@ export MqttNode = PubSubNode.extend4000 do
   call: (pth, ...value) ->
     true
 
-
-# export lego = Node.extend4000 do
-#   requires: [ 'logger' ]
-  
-#   settings: do
-#     name: os.hostname() + "/" + path.basename(path.dirname(require.main.filename))
-#     port: 1883
-
-#   init: (callback) ->
-#     @settings.name = @settings.name
-#     @settings.path = path.join(@settings.name)
-    
-#     @logger = @env.l.child({tags: {+mqtt}})
-#     @log = @logger.log.bind(@logger)
-    
-#     @log 'connecting to mqtt://' + @settings.host + ":" + @settings.port, {}, 'offline'
-#     @client = mqtt.connect @settings{ host, port }
-#     #<<<
-#     #  will: { topic: @settings.path + '/status', payload: JSON.stringify({ status: -1 }) }
-      
-#     @client.on 'connect', ~> 
-# #      @client.publish @settings.path + '/status', JSON.stringify({ status: 1 })
-      
-#       @client.subscribe [ 'who' ]
-      
-#       @client.on 'message', (topic, msg) ~> 
-#         if topic != 'who' then return
-#         @client.publish msg, @settings.path
-        
-#       @log 'connected', {  }, 'init', 'ok'
-#       callback()
-
-#   who: -> new p (resolve,reject) ~> 
-#     who = "who" + new Date().getTime()
-#     @client.subscribe who, ~>
-#       clients = {  }
-#       @client.on 'message', (topic, msg) -> if topic != who then return else clients[String msg] = true
-#       @client.publish 'who', who
-#       setTimeout((~> @client.unsubscribe who, -> resolve clients), 500)
-
-#   on: (...args) -> @client.on.apply(@client, args)
-  
-#   subscribe: (...args) -> @client.subscribe.apply(@client, args)
-  
-#   publish: (...args) -> @client.publish.apply(@client, args)
-  
-#   unsubscribe: (...args) -> @client.unsubscribe.apply(@client, args)
-
-#   Device: (name) -> new export Device(@, name)
-  
-#   Sensor: (name) -> new export Node(@, path.join('sensors', name))
-    
-#   end: -> @client.end()
