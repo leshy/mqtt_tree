@@ -4,6 +4,7 @@ require! {
   lodash: { each, reduce, head, tail, mapValues }
   'backbone4000': Backbone
   abstractman: { GraphNode }
+  colors
 }
 
 export Node = GraphNode.extend4000 do
@@ -33,8 +34,10 @@ export Node = GraphNode.extend4000 do
   child: (name, extend, cls) ->
     Cls = cls or @childClass or @constructor
     if extend then Cls = Cls.extend4000 extend
-    child = new Cls { name: name, parent: @ }
-    @addChild(child)
+    @addChild(child = new Cls name: name, parent: @ )
+    if child.init then child.init()
+
+    child
 
 
 export PubSubNode = Node.extend4000 do
@@ -46,8 +49,8 @@ export PubSubNode = Node.extend4000 do
     
   command_delegate: (command, pth, value) ->
     [ target, ...pthtail ] = pth
-    if targetChild = head @getChild(target)
-      targetChild.command_receive(command, pthtail.join('/'), value)
+    if targetChild = head @getChild target
+      targetChild.command_receive command, pthtail.join('/'), value
     else
       @command_receive(command, pth, value)
 
@@ -79,10 +82,14 @@ export PubNode = PubSubNode.extend4000 do
 
       | 'set' =>
         @set set = { "#{pth}":  value }
-        @trigger "remotechange:#{pth}", @, value
-        @trigger 'remotechange', @, set
+        @trigger "remotechange:#{pth}", @, value, pth
+        @trigger 'remotechange', @, set, pth
 
 
+# supports https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/Architecture.md
+# specification
+#
+# implements COMMAND, SET and STATUS calls
 export MqttNode = PubSubNode.extend4000 do
   childClass: PubSubNode
   
@@ -92,7 +99,10 @@ export MqttNode = PubSubNode.extend4000 do
 
     @on 'change', (child, data, pth) ~>
       each child.changedAttributes(), (val, key) ~> 
-        @publish path.join(@name, 'status', ...pth, key), JSON.stringify(val), retain: true
+        @publish do
+          path.join(@name, 'status', ...pth, key)
+          JSON.stringify(val)
+          retain: true
 
     @on 'call', (child, data, pth) ~>
       @publish path.join(@name, 'command', ...pth), JSON.stringify(data)
@@ -103,18 +113,19 @@ export MqttNode = PubSubNode.extend4000 do
     @subscribe path.join(@name, '#')
     
     @mqtt.on 'message', (pth, message) ~>
+      console.log colors.yellow(">>"), @vname, pth, String(message)
       pth = pth.split('/')
       [ self, command, ...pthtail ] = pth
       @command_delegate command, pthtail, JSON.parse(message)
 
-  publish: (pth, data) ->
+  publish: (pth, data, opts) ->
     if pth@@ isnt String then pth = pth.join('/')
-    console.log @name, 'PUB', pth, data
-    @mqtt.publish pth, data
+    console.log colors.green("PUB"), @vname, pth, data
+    @mqtt.publish pth, data, opts
     
   subscribe: (pth) ->
     if pth@@ isnt String then pth = pth.join('/')
-    console.log @name, 'SUB', pth
+    console.log colors.red("SUB"), @vname, pth
     @mqtt.subscribe pth
     
   call: (pth, ...value) ->
